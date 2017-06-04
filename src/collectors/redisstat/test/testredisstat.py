@@ -165,6 +165,8 @@ class TestRedisCollector(CollectorTestCase):
         patch_time.stop()
 
         metrics = {'6379.process.uptime': 95732,
+                   '6379.replication.master': 1,
+                   '6379.replication.master_sync_in_progress': 0,
                    '6379.pubsub.channels': 1,
                    '6379.slaves.connected': 2,
                    '6379.slaves.last_io': 7,
@@ -304,6 +306,33 @@ class TestRedisCollector(CollectorTestCase):
 
     @run_only_if_redis_is_available
     @patch.object(Collector, 'publish')
+    def test_process_config_with_instances(self, publish_mock):
+
+        config_data = {
+            'instances': [
+                'nick1@host1:1111',
+                'nick2@:2222',
+                'nick3@host3',
+                'nick4@host4:3333/@pass/word',
+                'bla'
+            ]
+        }
+
+        expected_processed_config = {
+            'nick2': ('localhost', 2222, None, None),
+            'nick3': ('host3', 6379, None, None),
+            'nick1': ('host1', 1111, None, None),
+            'nick4': ('host4', 3333, None, '@pass/word'),
+            '6379': ('bla', 6379, None, None)
+        }
+
+        config = get_collector_config('RedisCollector', config_data)
+        collector = RedisCollector(config, None)
+
+        self.assertEqual(collector.instances, expected_processed_config)
+
+    @run_only_if_redis_is_available
+    @patch.object(Collector, 'publish')
     def test_key_naming_when_using_instances(self, publish_mock):
 
         config_data = {
@@ -316,6 +345,7 @@ class TestRedisCollector(CollectorTestCase):
             ]
         }
         get_info_data = {
+            'role': 'slave',
             'total_connections_received': 200,
             'total_commands_processed': 100,
         }
@@ -324,21 +354,31 @@ class TestRedisCollector(CollectorTestCase):
                  metric_type='GAUGE'),
             call('nick1.process.commands_processed', 100, precision=0,
                  metric_type='GAUGE'),
+            call('nick1.replication.master', 0, precision=0,
+                 metric_type='GAUGE'),
             call('nick2.process.connections_received', 200, precision=0,
                  metric_type='GAUGE'),
             call('nick2.process.commands_processed', 100, precision=0,
+                 metric_type='GAUGE'),
+            call('nick2.replication.master', 0, precision=0,
                  metric_type='GAUGE'),
             call('nick3.process.connections_received', 200, precision=0,
                  metric_type='GAUGE'),
             call('nick3.process.commands_processed', 100, precision=0,
                  metric_type='GAUGE'),
+            call('nick3.replication.master', 0, precision=0,
+                 metric_type='GAUGE'),
             call('nick4.process.connections_received', 200, precision=0,
                  metric_type='GAUGE'),
             call('nick4.process.commands_processed', 100, precision=0,
                  metric_type='GAUGE'),
+            call('nick4.replication.master', 0, precision=0,
+                 metric_type='GAUGE'),
             call('6379.process.connections_received', 200, precision=0,
                  metric_type='GAUGE'),
             call('6379.process.commands_processed', 100, precision=0,
+                 metric_type='GAUGE'),
+            call('6379.replication.master', 0, precision=0,
                  metric_type='GAUGE'),
         ]
 

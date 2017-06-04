@@ -30,6 +30,7 @@ class KafkaCollector(diamond.collector.Collector):
         'double': float,
         'float': float,
         'int': int,
+        'java.lang.Object': float,
         'long': long,
     }
 
@@ -121,11 +122,12 @@ class KafkaCollector(diamond.collector.Collector):
                     if "," in key_prefix:
                         key_prefix = key_prefix.split(',')[0]
                 elif i > 0:
-                    key = objectname.split('=')[2]
+                    key = objectname.split('=')[i + 1]
                     if key:
                         if '"' in key:
                             key = key.split('"')[1]
                         key_prefix = key_prefix + '.' + key
+                        key_prefix = key_prefix.replace(",", ".")
 
         metrics = {}
 
@@ -135,9 +137,13 @@ class KafkaCollector(diamond.collector.Collector):
             ptype = self.ATTRIBUTE_TYPES.get(atype)
             if not ptype:
                 continue
-
-            value = ptype(attrib.get('value'))
-
+            try:
+                value = ptype(attrib.get('value'))
+            except ValueError:
+                # It will be too busy, so not logging it every time
+                self.log.debug('Unable to parse the value for ' +
+                               atype + " in " + objectname)
+                continue
             name = '.'.join([key_prefix, attrib.get('name')])
             # Some prefixes and attributes could have spaces, thus we must
             # sanitize them
@@ -167,7 +173,11 @@ class KafkaCollector(diamond.collector.Collector):
 
         # Query each one for stats
         for mbean in mbeans:
+            if mbean is None:
+                continue
             stats = self.query_mbean(mbean)
+            if stats is None:
+                self.log.error('Failed to get stats for' + mbean)
             metrics.update(stats)
 
         # Publish stats
